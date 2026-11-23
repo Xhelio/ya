@@ -22,6 +22,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
@@ -122,7 +123,25 @@ def main() -> None:
         ]
     )
     model.fit(X_train, y_train)
-    predictions = model.predict(X_test)
+    untuned_predictions = model.predict(X_test)
+
+    # Tune only on training data; keep the holdout test set untouched.
+    search = GridSearchCV(
+        estimator=model,
+        param_grid={
+            "classifier__C": [0.1, 1.0, 10.0],
+            "classifier__class_weight": [None, "balanced"],
+            "preprocess__ingredients_tfidf__ngram_range": [(1, 1), (1, 2)],
+        },
+        scoring="f1_macro",
+        cv=StratifiedGroupKFold(n_splits=4, shuffle=True, random_state=RANDOM_STATE),
+        n_jobs=-1,
+        refit=True,
+        error_score="raise",
+    )
+    search.fit(X_train, y_train, groups=groups.iloc[train_idx])
+    tuned_model = search.best_estimator_
+    predictions = tuned_model.predict(X_test)
 
     # A simple majority-class baseline gives context to the model's accuracy.
     baseline = DummyClassifier(strategy="most_frequent")
@@ -151,7 +170,12 @@ def main() -> None:
         "n_splits": N_SPLITS,
         "random_state": RANDOM_STATE,
         "model": "TF-IDF + StandardScaler + LogisticRegression(lbfgs)",
+        "untuned_accuracy": float(accuracy_score(y_test, untuned_predictions)),
+        "untuned_f1_macro": float(f1_score(y_test, untuned_predictions, average="macro", zero_division=0)),
+        "tuned_accuracy": float(accuracy_score(y_test, predictions)),
         "accuracy": float(accuracy_score(y_test, predictions)),
+        "cv_best_macro_f1": float(search.best_score_),
+        "best_parameters": search.best_params_,
         "precision_macro": float(precision_score(y_test, predictions, average="macro", zero_division=0)),
         "recall_macro": float(recall_score(y_test, predictions, average="macro", zero_division=0)),
         "f1_macro": float(f1_score(y_test, predictions, average="macro", zero_division=0)),
@@ -178,7 +202,7 @@ def main() -> None:
     with (OUTPUT_DIR / "metrics.json").open("w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2, ensure_ascii=False)
 
-    joblib.dump(model, OUTPUT_DIR / "skincare_logistic_regression.joblib")
+    joblib.dump(tuned_model, OUTPUT_DIR / "skincare_logistic_regression.joblib")
 
     print(json.dumps(metrics, indent=2, ensure_ascii=False))
     print(f"\\nReports and trained pipeline saved to: {OUTPUT_DIR}")
