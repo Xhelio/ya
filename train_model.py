@@ -88,6 +88,19 @@ def main() -> None:
     train_idx, test_idx = next(splitter.split(X, target, groups=groups))
     X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
     y_train, y_test = target.iloc[train_idx], target.iloc[test_idx]
+    train_groups = set(groups.iloc[train_idx])
+    test_groups = set(groups.iloc[test_idx])
+    overlap = train_groups.intersection(test_groups)
+    if overlap:
+        raise RuntimeError(f"Group leakage detected: {len(overlap)} URL groups overlap.")
+    missing_train = sorted(set(target.unique()) - set(y_train.unique()))
+    missing_test = sorted(set(target.unique()) - set(y_test.unique()))
+    if missing_train or missing_test:
+        raise RuntimeError(
+            "The selected grouped split does not represent every class. "
+            f"Missing from train={missing_train}; missing from test={missing_test}. "
+            "Review the dataset's group structure before reporting metrics."
+        )
 
     # TF-IDF handles text; StandardScaler handles the numeric price feature.
     # ColumnTransformer combines them while preserving sparse text features.
@@ -129,6 +142,11 @@ def main() -> None:
         "repeated_url_rows": int(groups.duplicated(keep=False).sum()),
         "train_rows": int(len(train_idx)),
         "test_rows": int(len(test_idx)),
+        "train_url_groups": int(len(train_groups)),
+        "test_url_groups": int(len(test_groups)),
+        "url_group_overlap": int(len(overlap)),
+        "train_class_distribution": {str(k): int(v) for k, v in y_train.value_counts().sort_index().items()},
+        "test_class_distribution": {str(k): int(v) for k, v in y_test.value_counts().sort_index().items()},
         "split_method": "first fold of StratifiedGroupKFold",
         "n_splits": N_SPLITS,
         "random_state": RANDOM_STATE,
