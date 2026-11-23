@@ -30,6 +30,29 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Run experiment
         run: python train_model.py
+      - name: Validate experiment outputs
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          metrics = json.loads(Path("experiment_output/metrics.json").read_text())
+          required = [
+              "accuracy", "precision_macro", "recall_macro", "f1_macro",
+              "precision_weighted", "recall_weighted", "f1_weighted",
+              "majority_baseline_accuracy", "url_group_overlap",
+          ]
+          missing = [key for key in required if key not in metrics]
+          if missing:
+              raise SystemExit(f"Missing metrics: {missing}")
+          if metrics["url_group_overlap"] != 0:
+              raise SystemExit("URL group leakage detected.")
+          if metrics["train_rows"] <= 0 or metrics["test_rows"] <= 0:
+              raise SystemExit("Empty train or test partition.")
+          if metrics["classes"] != len(metrics["test_class_distribution"]):
+              raise SystemExit("Not all classes are represented in the test partition.")
+          print("Experiment output validation passed.")
+          PY
       - name: Upload experiment outputs
         uses: actions/upload-artifact@v4
         with:
