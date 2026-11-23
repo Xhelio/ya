@@ -9,6 +9,14 @@ on:
       - "requirements.txt"
       - "skincare_products_clean.csv"
       - ".github/workflows/experiment.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "train_model.py"
+      - "requirements.txt"
+      - "skincare_products_clean.csv"
+      - ".github/workflows/experiment.yml"
   workflow_dispatch:
 
 permissions:
